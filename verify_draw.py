@@ -50,7 +50,7 @@ class JavaRandom:
         return val
 
 
-def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
+def verify_cycle(cycle_id, api_url="https://www.algodailylottery.com"):
     """
     Verify a lottery cycle for fairness.
 
