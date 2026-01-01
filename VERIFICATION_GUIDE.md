@@ -142,7 +142,7 @@ The verification script does this for you, but you can do it manually if desired
 If verification fails for any cycle, please report it immediately:
 - 📧 **Email**: info@algodailylottery.com
 - 🐦 **Twitter**: [@algodailylottery](https://twitter.com/algodailylottery)
-- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algorand-lottery-verification/issues)
+- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algo-daily-lottery-verification-public/issues)
 
 ## License
 

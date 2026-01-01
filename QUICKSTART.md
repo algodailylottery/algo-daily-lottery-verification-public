@@ -6,8 +6,8 @@ Get up and running in 60 seconds!
 
 ```bash
 # 1. Clone this repository
-git clone https://github.com/algodailylottery/algorand-lottery-verification.git
-cd algorand-lottery-verification
+git clone https://github.com/algodailylottery/algo-daily-lottery-verification-public.git
+cd algo-daily-lottery-verification-public
 
 # 2. Install requirements
 pip install -r requirements.txt

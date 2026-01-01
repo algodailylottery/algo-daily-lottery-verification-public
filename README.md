@@ -8,7 +8,7 @@ Don't trust, verify! This repository contains everything you need to independent
 
 ```bash
 # Download the verification script
-wget https://raw.githubusercontent.com/algodailylottery/algorand-lottery-verification/main/verify_draw.py
+wget https://raw.githubusercontent.com/algodailylottery/algo-daily-lottery-verification-public/main/verify_draw.py
 
 # Install requirements
 pip install requests
@@ -177,7 +177,7 @@ MIT License - Free to use and modify.
 
 - 📧 **Email**: info@algodailylottery.com
 - 🐦 **Twitter**: [@algodailylottery](https://twitter.com/algodailylottery)
-- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algorand-lottery-verification/issues)
+- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algo-daily-lottery-verification-public/issues)
 
 ---
 

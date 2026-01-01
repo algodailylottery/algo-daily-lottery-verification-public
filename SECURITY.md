@@ -128,7 +128,7 @@ Found a security vulnerability?
 **Please report it responsibly:**
 - 📧 **Email**: info@algodailylottery.com
 - 🐦 **Twitter**: [@algodailylottery](https://twitter.com/algodailylottery)
-- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algorand-lottery-verification/issues)
+- 🐛 **GitHub Issues**: [Open an issue](https://github.com/algodailylottery/algo-daily-lottery-verification-public/issues)
 
 We take security seriously and will respond promptly.
 
