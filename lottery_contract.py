@@ -580,7 +580,7 @@ def execute_draw():
     - Use VRF seed from this transaction to select winners off-chain
     - Register winners with their addresses for on-chain claims
 
-    This is permissionless - anyone can call when conditions are met.
+    Only the creator can call this (security: prevents seed manipulation).
     """
 
     # Get current state
@@ -621,12 +621,17 @@ def execute_draw():
         Itob(Global.round())
     ))
 
-    # Test mode: creator can bypass cycle end check
+    # Security: Only creator can call execute_draw (prevents seed manipulation)
     is_creator = Txn.sender() == Global.creator_address()
+
+    # Test mode: creator can bypass cycle end check
     test_mode_enabled = App.globalGet(KEY_TEST_MODE) == Int(1)
     can_bypass_cycle_check = And(is_creator, test_mode_enabled)
 
     return Seq([
+        # Security: Only creator can call (prevents seed manipulation attack)
+        Assert(is_creator),
+
         # Validate all conditions
         # Cycle must have ended, OR creator can bypass in test mode
         Assert(Or(cycle_has_ended, can_bypass_cycle_check)),
