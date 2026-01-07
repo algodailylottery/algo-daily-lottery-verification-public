@@ -25,13 +25,11 @@ python3 verify_draw.py 7
 
 ## How It Works
 
-### 1. On-Chain Seed Generation
-The smart contract generates a random seed using blockchain data:
-- Block timestamp (unpredictable)
-- Pot total
-- Total entries
-- Block round number (unpredictable)
-- Transaction sender
+### 1. On-Chain Seed Generation (VRF Beacon)
+The smart contract uses **Algorand's official Randomness Beacon** for cryptographically secure randomness:
+- Commit-reveal pattern prevents manipulation
+- VRF (Verifiable Random Function) provides unpredictable output
+- 32-byte seed retrieved from beacon after commitment
 
 This seed is logged on the Algorand blockchain and **cannot be changed**.
 
@@ -87,6 +85,7 @@ python3 test_determinism.py
 - **[VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md)** - Complete user guide
 - **[VERIFICATION_DIAGRAM.md](VERIFICATION_DIAGRAM.md)** - Visual diagrams explaining the process
 - **[BLOCKCHAIN_SEED_RETRIEVAL.md](BLOCKCHAIN_SEED_RETRIEVAL.md)** - How to get seed from blockchain
+- **[security-update-vrf-beacon-2026-01-07/](security-update-vrf-beacon-2026-01-07/)** - VRF Beacon implementation details
 
 ## Smart Contract
 
@@ -97,18 +96,19 @@ python3 test_determinism.py
 ## Example Verification
 
 ```bash
-$ python3 verify_draw.py 7
+$ python3 verify_draw.py 15
 
 🔍 ALGORAND DAILY LOTTERY - FAIRNESS VERIFICATION
 
-📋 Verifying Cycle 7...
+📋 Verifying Cycle 15...
 ✅ Draw data loaded successfully
 
 📊 Draw Information:
-   Cycle ID:      7
-   Random Seed:   5352984041323284126
-   Pot Total:     3515.96 ALGO
-   Total Entries: 3411
+   Cycle ID:      15
+   Seed Type:     VRF Beacon
+   Random Seed:   7f3a9b2c8d1e4f5a...6d7e8f9a0b1c2d3e
+   Pot Total:     4250.00 ALGO
+   Total Entries: 4125
 
 🎲 Calculating winners from on-chain seed...
 
@@ -118,6 +118,8 @@ $ python3 verify_draw.py 7
 
 ✅ ✅ ✅  DRAW IS FAIR AND VALID  ✅ ✅ ✅
 ```
+
+**Note:** Cycles before VRF upgrade show `Seed Type: Legacy` with numeric seeds.
 
 ## Why This Matters
 
@@ -136,7 +138,8 @@ Blockchain → Public Seed → Verifiable Winners
 ## Security
 
 The lottery uses:
-- ✅ On-chain seed generation (immutable)
+- ✅ Algorand VRF Beacon (cryptographically secure randomness)
+- ✅ Commit-reveal pattern (prevents manipulation)
 - ✅ Deterministic algorithm (verifiable)
 - ✅ Public blockchain logs (transparent)
 - ✅ Open source tools (auditable)

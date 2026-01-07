@@ -9,6 +9,10 @@ This script allows ANYONE to verify that lottery draws are fair by:
 
 NO TRUST REQUIRED - Everything is verified from blockchain data.
 
+Supports both:
+- VRF Beacon format (new): 32-byte cryptographic seed from Algorand Randomness Beacon
+- Legacy format (old): Blockchain-derived seed
+
 Usage:
     python3 verify_draw.py <cycle_number>
     python3 verify_draw.py 7
@@ -18,7 +22,7 @@ Requirements:
 
 Author: Independent Verification Tool
 License: MIT
-GitHub: https://github.com/your-repo/algorand-lottery
+GitHub: https://github.com/algodailylottery/algo-daily-lottery-verification-public
 """
 
 import sys
@@ -29,6 +33,9 @@ class JavaRandom:
     """
     Python implementation of Java's Random class.
     This ensures we use the EXACT same algorithm as the backend.
+
+    Note: JavaRandom uses a 64-bit seed internally (actually 48-bit state).
+    For VRF seeds (32 bytes), we use the first 8 bytes as the seed.
     """
     def __init__(self, seed):
         self.seed = (seed ^ 0x5DEECE66D) & ((1 << 48) - 1)
@@ -48,6 +55,25 @@ class JavaRandom:
             bits = self.next(31)
             val = bits % bound
         return val
+
+
+def convert_vrf_seed_to_random_seed(vrf_seed_hex):
+    """
+    Convert 32-byte VRF seed to JavaRandom seed.
+
+    The VRF beacon returns a 32-byte (256-bit) seed.
+    JavaRandom expects a 64-bit seed.
+
+    Conversion: Take first 8 bytes of VRF seed as big-endian int64.
+
+    Args:
+        vrf_seed_hex: 64-character hex string (32 bytes)
+
+    Returns:
+        64-bit integer seed for JavaRandom
+    """
+    seed_bytes = bytes.fromhex(vrf_seed_hex)
+    return int.from_bytes(seed_bytes[:8], byteorder='big')
 
 
 def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
@@ -85,16 +111,36 @@ def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
         print(f"\nTrying to connect to: {api_url}")
         return False
 
-    # Extract data
-    seed = draw['randomSeed']
+    # Extract data - handle both VRF and legacy formats
     total_entries = draw['totalEntries']
     pot_total = draw['potTotal'] / 1_000_000
     draw_tx = draw.get('drawTransactionId', 'N/A')
 
+    # Check for VRF seed (hex string) vs legacy seed (integer)
+    raw_seed = draw.get('randomSeed')
+    vrf_seed_hex = draw.get('vrfSeedHex')  # New field for VRF
+
+    if vrf_seed_hex:
+        # VRF format: 32-byte hex seed
+        seed = convert_vrf_seed_to_random_seed(vrf_seed_hex)
+        seed_display = f"{vrf_seed_hex[:16]}...{vrf_seed_hex[-16:]}"
+        seed_type = "VRF Beacon"
+    elif isinstance(raw_seed, str) and len(raw_seed) == 64:
+        # VRF format stored as randomSeed (hex string)
+        seed = convert_vrf_seed_to_random_seed(raw_seed)
+        seed_display = f"{raw_seed[:16]}...{raw_seed[-16:]}"
+        seed_type = "VRF Beacon"
+    else:
+        # Legacy format: integer seed
+        seed = raw_seed
+        seed_display = str(seed)
+        seed_type = "Legacy"
+
     print(f"✅ Draw data loaded successfully\n")
     print(f"📊 Draw Information:")
     print(f"   Cycle ID:      {cycle_id}")
-    print(f"   Random Seed:   {seed}")
+    print(f"   Seed Type:     {seed_type}")
+    print(f"   Random Seed:   {seed_display}")
     print(f"   Pot Total:     {pot_total:.2f} ALGO")
     print(f"   Total Entries: {total_entries}")
     print(f"   Draw Tx:       {draw_tx}")
@@ -159,10 +205,14 @@ def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
     print("\n" + "=" * 80)
     print("\n💡 HOW THIS VERIFICATION WORKS:")
     print("   1. Fetches random seed from blockchain (immutable, public)")
-    print("   2. Uses Java's Random algorithm (deterministic)")
-    print("   3. Recalculates winners using the seed")
-    print("   4. Compares with registered winners")
-    print("   5. Same seed ALWAYS produces same winners")
+    if seed_type == "VRF Beacon":
+        print("   2. Converts 32-byte VRF seed to 64-bit JavaRandom seed")
+        print("   3. Uses Java's Random algorithm (deterministic)")
+    else:
+        print("   2. Uses Java's Random algorithm (deterministic)")
+    print("   4. Recalculates winners using the seed")
+    print("   5. Compares with registered winners")
+    print("   6. Same seed ALWAYS produces same winners")
     print("\n🔐 TRUSTLESS: You don't need to trust anyone - verify yourself!")
     print("=" * 80 + "\n")
 
@@ -179,6 +229,7 @@ def main():
         print("  python3 verify_draw.py 7")
         print("\nThis tool verifies that lottery winners were fairly selected")
         print("from the on-chain random seed. No trust required!")
+        print("\nSupports both VRF Beacon (new) and legacy (old) seed formats.")
         sys.exit(1)
 
     try:
