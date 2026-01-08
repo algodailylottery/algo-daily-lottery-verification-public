@@ -36,37 +36,50 @@ def get_seed_from_blockchain(cycle_id, app_id=3380359414):
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        total_checked = 0
+        page = 1
 
-        transactions = data.get("transactions", [])
-        print(f"✅ Found {len(transactions)} application transactions")
+        while True:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
 
-        for txn in transactions:
-            app_args = txn.get("application-transaction", {}).get("application-args", [])
-            if not app_args:
-                continue
+            transactions = data.get("transactions", [])
+            total_checked += len(transactions)
+            print(f"✅ Page {page}: checked {total_checked} transactions...")
 
-            try:
-                method = base64.b64decode(app_args[0]).decode('utf-8')
-            except:
-                continue
+            for txn in transactions:
+                app_args = txn.get("application-transaction", {}).get("application-args", [])
+                if not app_args:
+                    continue
 
-            # Check for new VRF format (execute_draw_reveal)
-            if method == "execute_draw_reveal":
-                seed_result = parse_draw_revealed_log(txn, cycle_id)
-                if seed_result:
-                    return seed_result
+                try:
+                    method = base64.b64decode(app_args[0]).decode('utf-8')
+                except:
+                    continue
 
-            # Check for old format (execute_draw) - backwards compatibility
-            if method == "execute_draw":
-                seed_result = parse_draw_executed_log(txn, cycle_id)
-                if seed_result:
-                    return seed_result
+                # Check for new VRF format (execute_draw_reveal)
+                if method == "execute_draw_reveal":
+                    seed_result = parse_draw_revealed_log(txn, cycle_id)
+                    if seed_result:
+                        return seed_result
+
+                # Check for old format (execute_draw) - backwards compatibility
+                if method == "execute_draw":
+                    seed_result = parse_draw_executed_log(txn, cycle_id)
+                    if seed_result:
+                        return seed_result
+
+            # Check for next page
+            next_token = data.get("next-token")
+            if not next_token or len(transactions) == 0:
+                break
+
+            params["next"] = next_token
+            page += 1
 
         print(f"\n❌ No draw found for Cycle {cycle_id}")
-        print(f"   This cycle may not have been drawn yet.")
+        print(f"   Searched {total_checked} transactions.")
         return None, None, None
 
     except Exception as e:
@@ -142,22 +155,30 @@ def parse_draw_executed_log(txn, cycle_id):
     """
     Parse old DRAW_EXECUTED log format (pre-VRF).
     Kept for backwards compatibility with historical draws.
+
+    Log format:
+    DRAW_EXECUTED:cycle=<8B>,pot=<8B>,entries=<8B>,seed=<32B>,...
     """
     logs = txn.get("logs", [])
 
     for log_b64 in logs:
         try:
             log_bytes = base64.b64decode(log_b64)
-            log_text = log_bytes.decode('utf-8', errors='ignore')
 
-            if "DRAW_EXECUTED:" not in log_text:
+            # Check if this is a DRAW_EXECUTED log
+            prefix = b"DRAW_EXECUTED:cycle="
+            if not log_bytes.startswith(prefix):
                 continue
 
-            if f"cycle={cycle_id}" not in log_text:
+            # Parse cycle ID (8 bytes after prefix)
+            offset = len(prefix)
+            log_cycle_id = int.from_bytes(log_bytes[offset:offset+8], byteorder='big')
+
+            if log_cycle_id != cycle_id:
                 continue
 
-            # Find seed in old format
-            seed_marker = b"seed="
+            # Found matching cycle - extract seed
+            seed_marker = b",seed="
             seed_idx = log_bytes.find(seed_marker)
 
             if seed_idx == -1:
@@ -165,6 +186,9 @@ def parse_draw_executed_log(txn, cycle_id):
 
             seed_start = seed_idx + len(seed_marker)
             seed_bytes = log_bytes[seed_start:seed_start + 32]
+
+            if len(seed_bytes) != 32:
+                continue
 
             seed_int = int.from_bytes(seed_bytes, byteorder='big')
             seed_hex = seed_bytes.hex()
