@@ -30,10 +30,8 @@ KEY_ROLLOVER_POOL = Bytes("rollover")
 
 # Configuration
 KEY_LOTT_ASSET_ID = Bytes("lott_id")
-KEY_LOTT_EARN_RATE = Bytes("lott_rate")
 KEY_IS_PAUSED = Bytes("is_paused")
 KEY_ENGINEERING_WALLET = Bytes("eng_wallet")
-KEY_TEST_MODE = Bytes("test_mode")
 KEY_CYCLE_DURATION = Bytes("cycle_dur")
 
 # Current cycle entries
@@ -43,11 +41,11 @@ KEY_TOTAL_ENTRIES = Bytes("total_entries")
 KEY_UNCLAIMED_PRIZES = Bytes("unclaimed")
 KEY_LOTT_DIST_WALLET = Bytes("lott_wallet")
 
-# VRF/Beacon specific keys
-KEY_BEACON_APP_ID = Bytes("beacon_id")  # Randomness Beacon App ID
-KEY_COMMITMENT_ROUND = Bytes("commit_round")  # Round committed for randomness
-KEY_DRAW_STATUS = Bytes("draw_status")  # 0=none, 1=committed, 2=revealed
-KEY_VRF_SEED = Bytes("vrf_seed")  # 32-byte seed from beacon
+# VRF/Beacon specific keys - REPURPOSED SLOTS for schema compatibility
+# Mainnet contract has 13 uints / 2 bytes schema (fixed at creation)
+# We repurpose test_mode and lott_rate slots which are no longer needed
+KEY_COMMITMENT_ROUND = Bytes("lott_rate")  # Repurposed: was lott_rate (always 1)
+KEY_DRAW_STATUS = Bytes("test_mode")  # Repurposed: was test_mode (always 0)
 
 
 # ============================================================================
@@ -106,11 +104,18 @@ def get_global_schema():
     """
     Define global state schema for the lottery contract with VRF.
 
-    Added for VRF: beacon_id, commitment_round, draw_status, vrf_seed
+    IMPORTANT: Mainnet contract schema is FIXED at 13 uints / 2 bytes.
+    VRF support achieved by repurposing existing slots:
+    - test_mode slot (always 0) → now used for draw_status
+    - lott_rate slot (always 1) → now used for commitment_round
+    - beacon_id: not stored, use BEACON_MAINNET constant
+    - vrf_seed: not stored, only logged in DRAW_REVEALED event
     """
     return (
-        16,  # uint64 values: original 13 + beacon_id, commitment_round, draw_status
-        3    # bytes values: original 2 + vrf_seed (32 bytes)
+        13,  # uint64 values: cycle_dur, cycle_id, pot, lott_id, cycle_end, is_paused,
+        #                cycle_start, total_entries, unclaimed, rollover, entry_price,
+        #                commitment_round (was lott_rate), draw_status (was test_mode)
+        2    # bytes values: eng_wallet, lott_wallet
     )
 
 
@@ -132,16 +137,16 @@ def handle_creation():
 
     Application Args:
     - args[0]: LOTT Asset ID (uint64)
-    - args[1]: Beacon App ID (uint64) - 600011887 for testnet, 1615566206 for mainnet
+
+    Note: Beacon App ID is hardcoded as BEACON_MAINNET constant.
+    Note: This only runs for NEW contracts. For updates, existing state is preserved.
     """
 
     lott_asset_id = Btoi(Txn.application_args[0])
-    beacon_app_id = Btoi(Txn.application_args[1])
 
     return Seq([
         # Validate arguments
         Assert(lott_asset_id > Int(0)),
-        Assert(beacon_app_id > Int(0)),
 
         # Initialize cycle duration
         App.globalPut(KEY_CYCLE_DURATION, DEFAULT_CYCLE_DURATION),
@@ -158,21 +163,19 @@ def handle_creation():
 
         # Initialize configuration
         App.globalPut(KEY_LOTT_ASSET_ID, lott_asset_id),
-        App.globalPut(KEY_LOTT_EARN_RATE, LOTT_PER_ENTRY),
         App.globalPut(KEY_IS_PAUSED, Int(0)),
         App.globalPut(KEY_ENGINEERING_WALLET, Txn.sender()),
         App.globalPut(KEY_LOTT_DIST_WALLET, Txn.sender()),
-        App.globalPut(KEY_TEST_MODE, Int(0)),
 
         # Initialize entry counter
         App.globalPut(KEY_TOTAL_ENTRIES, Int(0)),
         App.globalPut(KEY_UNCLAIMED_PRIZES, Int(0)),
 
-        # Initialize VRF/Beacon state
-        App.globalPut(KEY_BEACON_APP_ID, beacon_app_id),
+        # Initialize VRF state (uses repurposed slots)
+        # KEY_COMMITMENT_ROUND uses "lott_rate" slot
+        # KEY_DRAW_STATUS uses "test_mode" slot
         App.globalPut(KEY_COMMITMENT_ROUND, Int(0)),
         App.globalPut(KEY_DRAW_STATUS, DRAW_STATUS_NONE),
-        App.globalPut(KEY_VRF_SEED, Bytes("")),
 
         Approve()
     ])
@@ -218,7 +221,7 @@ def buy_entries():
 
     user_opted_in = App.optedIn(Txn.sender(), Global.current_application_id())
 
-    lott_to_mint = num_entries * App.globalGet(KEY_LOTT_EARN_RATE)
+    lott_to_mint = num_entries * LOTT_PER_ENTRY  # Hardcoded: always 1 LOTT per entry
 
     entry_start_scratch = ScratchVar(TealType.uint64)
     cycle_id_scratch = ScratchVar(TealType.uint64)
@@ -298,15 +301,12 @@ def execute_draw_commit():
 
     cycle_end_time = App.globalGet(KEY_CYCLE_END_TIME)
     total_entries = App.globalGet(KEY_TOTAL_ENTRIES)
-    test_mode = App.globalGet(KEY_TEST_MODE)
     current_cycle_id = App.globalGet(KEY_CURRENT_CYCLE_ID)
 
     cycle_has_ended = Global.latest_timestamp() >= cycle_end_time
     has_entries = total_entries > Int(0)
     is_not_paused = App.globalGet(KEY_IS_PAUSED) == Int(0)
     is_creator = Txn.sender() == Global.creator_address()
-    test_mode_enabled = test_mode == Int(1)
-    can_bypass_cycle_check = And(is_creator, test_mode_enabled)
 
     # Commit to future round for beacon
     commitment_round = Global.round() + COMMITMENT_OFFSET
@@ -315,16 +315,17 @@ def execute_draw_commit():
         # Security: Only creator
         Assert(is_creator),
 
-        # Validate conditions
-        Assert(Or(cycle_has_ended, can_bypass_cycle_check)),
+        # Validate conditions (test_mode removed - no longer supported)
+        Assert(cycle_has_ended),
         Assert(has_entries),
         Assert(is_not_paused),
 
         # Verify no pending draw
         Assert(App.globalGet(KEY_DRAW_STATUS) == DRAW_STATUS_NONE),
 
-        # Store commitment for beacon
+        # Store commitment for beacon (uses repurposed lott_rate slot)
         App.globalPut(KEY_COMMITMENT_ROUND, commitment_round),
+        # Store draw status (uses repurposed test_mode slot)
         App.globalPut(KEY_DRAW_STATUS, DRAW_STATUS_COMMITTED),
 
         # Log commitment (backend will wait for reveal)
@@ -356,7 +357,6 @@ def execute_draw_reveal():
     current_round = Global.round()
     draw_status = App.globalGet(KEY_DRAW_STATUS)
     is_creator = Txn.sender() == Global.creator_address()
-    beacon_app_id = App.globalGet(KEY_BEACON_APP_ID)
 
     # Current cycle data (before reset)
     current_pot = App.globalGet(KEY_CURRENT_POT)
@@ -393,10 +393,11 @@ def execute_draw_reveal():
         Assert(current_round >= commitment_round + REVEAL_WAIT_ROUNDS),
 
         # Call Algorand Randomness Beacon (inner txn 1)
+        # Uses hardcoded BEACON_MAINNET constant instead of stored value
         InnerTxnBuilder.Begin(),
         InnerTxnBuilder.SetFields({
             TxnField.type_enum: TxnType.ApplicationCall,
-            TxnField.application_id: beacon_app_id,
+            TxnField.application_id: BEACON_MAINNET,
             TxnField.on_completion: OnComplete.NoOp,
             TxnField.fee: Int(0),
         }),
@@ -437,11 +438,12 @@ def execute_draw_reveal():
         App.globalPut(KEY_UNCLAIMED_PRIZES,
                       App.globalGet(KEY_UNCLAIMED_PRIZES) + total_claimable),
 
-        # Store seed for winner calculation
-        App.globalPut(KEY_VRF_SEED, beacon_seed.load()),
+        # Update draw status (uses repurposed test_mode slot)
+        # NOTE: vrf_seed is NOT stored - only logged in DRAW_REVEALED event
         App.globalPut(KEY_DRAW_STATUS, DRAW_STATUS_REVEALED),
 
         # Log complete draw data (backend uses this for everything)
+        # The seed is logged here for backend to use - no need to store it
         Log(Concat(
             Bytes("DRAW_REVEALED:"),
             Bytes("cycle="), Itob(current_cycle_id),
@@ -504,10 +506,10 @@ def register_winners():
         # Create box with winner data
         App.box_put(box_name_scratch.load(), Concat(winner_data_val.load(), initial_claimed_bitmap)),
 
-        # Reset draw status for next cycle
+        # Reset draw status for next cycle (uses repurposed slots)
         App.globalPut(KEY_DRAW_STATUS, DRAW_STATUS_NONE),
         App.globalPut(KEY_COMMITMENT_ROUND, Int(0)),
-        App.globalPut(KEY_VRF_SEED, Bytes("")),
+        # NOTE: vrf_seed is not stored, so no need to clear it
 
         # Log registration
         Log(Concat(
@@ -653,16 +655,7 @@ def admin_opt_in_asset():
     ])
 
 
-def admin_set_test_mode():
-    """Admin: Set test mode."""
-    new_mode = Btoi(Txn.application_args[1])
-
-    return Seq([
-        Assert(Txn.sender() == Global.creator_address()),
-        Assert(Or(new_mode == Int(0), new_mode == Int(1))),
-        App.globalPut(KEY_TEST_MODE, new_mode),
-        Approve()
-    ])
+# NOTE: admin_set_test_mode removed - test_mode slot repurposed for draw_status
 
 
 def end_empty_cycle():
@@ -671,15 +664,12 @@ def end_empty_cycle():
     current_cycle = App.globalGet(KEY_CURRENT_CYCLE_ID)
     total_entries = App.globalGet(KEY_TOTAL_ENTRIES)
     cycle_end_time = App.globalGet(KEY_CYCLE_END_TIME)
-    test_mode = App.globalGet(KEY_TEST_MODE)
 
     return Seq([
         Assert(Txn.sender() == Global.creator_address()),
         Assert(total_entries == Int(0)),
-        Assert(Or(
-            Global.latest_timestamp() >= cycle_end_time,
-            test_mode == Int(1)
-        )),
+        # test_mode bypass removed - cycle must have ended
+        Assert(Global.latest_timestamp() >= cycle_end_time),
 
         App.globalPut(KEY_CURRENT_CYCLE_ID, current_cycle + Int(1)),
         App.globalPut(KEY_TOTAL_ENTRIES, Int(0)),
@@ -705,7 +695,7 @@ def handle_noop():
         [method == Bytes("register_winners"), register_winners()],
         [method == Bytes("claim_prize"), claim_prize()],
         [method == Bytes("admin_opt_in_asset"), admin_opt_in_asset()],
-        [method == Bytes("admin_set_test_mode"), admin_set_test_mode()],
+        # admin_set_test_mode removed - test_mode slot repurposed for draw_status
         [method == Bytes("end_empty_cycle"), end_empty_cycle()],
     )
 
@@ -799,13 +789,14 @@ if __name__ == "__main__":
 
     print("\n=== VRF BEACON INTEGRATION ===")
     print("✅ Commit-Reveal Pattern Implemented")
-    print("✅ Algorand Randomness Beacon (Testnet: 600011887, Mainnet: 1615566206)")
+    print("✅ Algorand Randomness Beacon (Mainnet: 1615566206)")
     print("✅ Cryptographically Secure Winner Selection")
+    print("✅ Schema-compatible: Repurposed test_mode/lott_rate slots")
     print("")
     print("Usage:")
-    print("  1. execute_draw_commit() - Commit to round+8, pay fees")
-    print("  2. Wait 10-12 rounds")
+    print("  1. execute_draw_commit() - Commit to round+8")
+    print("  2. Wait 12+ rounds (~40 seconds)")
     print("  3. execute_draw_reveal() - Get beacon seed (add beacon to foreign_apps!)")
-    print("  4. Backend calculates winners with seed")
+    print("  4. Backend calculates winners with seed from log")
     print("  5. register_winners() - Register on-chain")
     print("  6. Users claim prizes")
