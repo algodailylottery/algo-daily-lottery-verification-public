@@ -461,8 +461,8 @@ def execute_draw_reveal():
         App.globalPut(KEY_CYCLE_START_TIME, Global.latest_timestamp()),
         App.globalPut(KEY_CYCLE_END_TIME, Global.latest_timestamp() + App.globalGet(KEY_CYCLE_DURATION)),
         App.globalPut(KEY_TOTAL_ENTRIES, Int(0)),
-        App.globalPut(KEY_CURRENT_POT, previous_rollover + rollover_amount),
-        App.globalPut(KEY_ROLLOVER_POOL, previous_rollover + rollover_amount),
+        App.globalPut(KEY_CURRENT_POT, rollover_amount),
+        App.globalPut(KEY_ROLLOVER_POOL, rollover_amount),
 
         Approve()
     ])
