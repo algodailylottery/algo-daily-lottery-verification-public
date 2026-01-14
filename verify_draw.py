@@ -182,8 +182,8 @@ def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
     print(f"   Status:     {'✅ SAME ENTRIES' if tier2_match else '❌ DIFFERENT ENTRIES'}")
 
     print(f"\n🥉 TIER 3 (15% of pot - 10 winners):")
-    print(f"   Calculated: {len(set(tier3_calc))} unique entries")
-    print(f"   Registered: {len(set(tier3_reg))} unique entries")
+    print(f"   Calculated: {sorted(tier3_calc)}")
+    print(f"   Registered: {sorted(tier3_reg)}")
     print(f"   Status:     {'✅ SAME ENTRIES' if tier3_match else '❌ DIFFERENT ENTRIES'}")
 
     # Final verdict
