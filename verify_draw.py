@@ -76,7 +76,7 @@ def convert_vrf_seed_to_random_seed(vrf_seed_hex):
     return int.from_bytes(seed_bytes[:8], byteorder='big')
 
 
-def verify_cycle(cycle_id, api_url="http://13.79.175.72:8080"):
+def verify_cycle(cycle_id, api_url="https://lottery-testnet-api.northeurope.cloudapp.azure.com"):
     """
     Verify a lottery cycle for fairness.
 

@@ -71,7 +71,7 @@ def get_all_execute_draw_transactions(app_id, limit=1000):
 
 def get_cycle_from_draw_history(cycle_id):
     """Get draw information for a specific cycle from the API."""
-    url = f"http://13.79.175.72:8080/api/mainnet/lottery/draw-history"
+    url = f"https://lottery-testnet-api.northeurope.cloudapp.azure.com/api/mainnet/lottery/draw-history"
 
     try:
         response = requests.get(url, params={'limit': 100}, timeout=10)
@@ -100,7 +100,7 @@ def map_transactions_to_cycles(execute_draw_txns):
     # Get recent draws
     try:
         response = requests.get(
-            "http://13.79.175.72:8080/api/mainnet/lottery/draw-history",
+            "https://lottery-testnet-api.northeurope.cloudapp.azure.com/api/mainnet/lottery/draw-history",
             params={'limit': 100},
             timeout=10
         )
