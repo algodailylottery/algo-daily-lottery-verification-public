@@ -80,9 +80,31 @@ Demonstrates that the same seed always produces identical results.
 python3 test_determinism.py
 ```
 
+### 🎡 `verify_spin.py`
+Verifies a single **Spin & Win** result from the on-chain `SPIN_REVEALED` log.
+
+**Usage:**
+```bash
+python3 verify_spin.py <reveal_tx_id> [--network mainnet|testnet] [--tier 1|2|3]
+```
+
+## 🎡 Spin & Win Verification
+
+Spin & Win is the instant-play wheel game alongside the lottery. Each spin's outcome is decided by
+Algorand VRF randomness and is verifiable straight from the chain with **`verify_spin.py`**:
+
+```bash
+python3 verify_spin.py <reveal_tx_id>          # add --tier 1|2|3 to also check the colour
+```
+
+It reads the on-chain `SPIN_REVEALED` log and confirms `segment = first8(seed) % 38` (plus the
+colour from the tier's segment counts). Full guide: **[SPINWIN_VERIFICATION.md](SPINWIN_VERIFICATION.md)**.
+Contract source: **[spinwin_contract.py](spinwin_contract.py)**.
+
 ## Documentation
 
 - **[VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md)** - Complete user guide
+- **[SPINWIN_VERIFICATION.md](SPINWIN_VERIFICATION.md)** - Spin & Win verification guide
 - **[VERIFICATION_DIAGRAM.md](VERIFICATION_DIAGRAM.md)** - Visual diagrams explaining the process
 - **[BLOCKCHAIN_SEED_RETRIEVAL.md](BLOCKCHAIN_SEED_RETRIEVAL.md)** - How to get seed from blockchain
 - **[security-update-vrf-beacon-2026-01-07/](security-update-vrf-beacon-2026-01-07/)** - VRF Beacon implementation details
