@@ -31,7 +31,7 @@ import requests
 
 TOTAL_SEGMENTS = 38
 COLORS = ["black", "green", "blue", "gold"]          # contract colour codes 0..3
-PAYOUT_PCT = {"black": 0, "green": 10, "blue": 18, "gold": 50}  # % of pot
+PAYOUT_PCT = {"black": 0, "green": 10, "blue": 18, "gold": 45}  # % of pot (gold = winner's share)
 
 NETWORKS = {
     "mainnet": {
@@ -155,8 +155,8 @@ def verify(txid, network="mainnet", tier_override=None):
     print(f"   Segment check: {'✅ MATCH' if segment_ok else '❌ MISMATCH'} "
           f"(recomputed {recomputed_segment} vs on-chain {recorded_segment})\n")
 
-    # The contract resets the tier global before emitting the log, so the log's tier reads 0.
-    # Use --tier to re-derive the colour, otherwise skip it (segment is the fairness-critical check).
+    # The contract logs the real tier, so the colour is re-derived automatically. (Legacy spins
+    # whose log predates that fix read tier=0 — pass --tier to check their colour.)
     box_tier = tier_override if tier_override else (rev["tier"] if 1 <= rev["tier"] <= 3 else None)
     colour_ok = None
     if box_tier is None:

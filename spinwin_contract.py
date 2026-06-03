@@ -87,13 +87,15 @@ COLOR_GOLD = Int(3)
 # Payout percentages (basis points, 10000 = 100%)
 PAYOUT_GREEN_BPS = Int(1000)            # 10% of pot
 PAYOUT_BLUE_BPS = Int(1800)             # 18% of pot
-PAYOUT_GOLD_WINNER_BPS = Int(5000)      # 50% of pot to winner (retuned for pot sustainability)
-PAYOUT_GOLD_ROLLOVER_BPS = Int(4500)    # 45% stays as pot seed (was 20%) — keeps the median pot stable
+PAYOUT_GOLD_WINNER_BPS = Int(4500)      # 45% of pot to winner
+PAYOUT_GOLD_ROLLOVER_BPS = Int(4500)    # 45% stays as pot seed — keeps the median pot growing
 PAYOUT_GOLD_LOTT_BPS = Int(500)         # 5% to LOTT holders
-PAYOUT_GOLD_PLATFORM_BPS = Int(0)       # 0% (platform fee on stake only)
+PAYOUT_GOLD_PLATFORM_BPS = Int(500)     # 5% to platform/engineering — charged ONLY on a jackpot
 
 # Fee percentages
-PLATFORM_FEE_BPS = Int(500)             # 5% of stake on every spin
+# There is NO platform fee on the stake: 100% of every stake feeds the pot. The
+# platform/engineering 5% is collected only when a gold jackpot is won (see spin_reveal).
+# This keeps the pot self-sustaining (full stake inflow) and transparent to players.
 LOTT_REWARD_DIVISOR = Int(10_000_000)   # stake / 10M = 10% of stake as LOTT (0-decimal)
 
 # Beacon constants
@@ -524,10 +526,12 @@ def spin_commit():
     - Txn[group_index]:     This app call
 
     Inner transactions:
-    1. Platform fee (5% of stake) to engineering wallet
-    2. LOTT reward (10% of stake as LOTT tokens) to spinner
+    1. LOTT reward (10% of stake as LOTT tokens) to spinner
 
-    Fee: 3000 (1 base + 2 inner txns)
+    No platform fee is taken on the stake — 100% of the stake feeds the pot. The
+    platform's 5% is collected only on a gold jackpot (see spin_reveal).
+
+    Fee: 2000 (1 base + 1 inner txn)
     """
     tier = Btoi(Txn.application_args[1])
     power = Btoi(Txn.application_args[2])
@@ -537,7 +541,6 @@ def spin_commit():
     raw_stake = ScratchVar(TealType.uint64)
     tier_pct = ScratchVar(TealType.uint64)
     min_pot = ScratchVar(TealType.uint64)
-    platform_fee = ScratchVar(TealType.uint64)
     lott_reward = ScratchVar(TealType.uint64)
     commitment_round = ScratchVar(TealType.uint64)
     next_spin_id = ScratchVar(TealType.uint64)
@@ -607,7 +610,6 @@ def spin_commit():
         Assert(App.globalGet(KEY_SPIN_STATE) == SPIN_IDLE),
 
         # Calculate values
-        platform_fee.store((stake_amount.load() * PLATFORM_FEE_BPS) / Int(10000)),
         lott_reward.store(stake_amount.load() / LOTT_REWARD_DIVISOR),
         commitment_round.store(Global.round() + power),
         next_spin_id.store(App.globalGet(KEY_TOTAL_SPINS) + Int(1)),
@@ -620,16 +622,6 @@ def spin_commit():
         App.globalPut(KEY_SPIN_ROUND, Global.round()),
         App.globalPut(KEY_SPIN_POWER, power),
         App.globalPut(KEY_COMMIT_ROUND, commitment_round.load()),
-
-        # === PAY PLATFORM FEE (5% of stake) ===
-        InnerTxnBuilder.Begin(),
-        InnerTxnBuilder.SetFields({
-            TxnField.type_enum: TxnType.Payment,
-            TxnField.receiver: App.globalGet(KEY_ENGINEERING_WALLET),
-            TxnField.amount: platform_fee.load(),
-            TxnField.fee: Int(0),
-        }),
-        InnerTxnBuilder.Submit(),
 
         # === SEND LOTT REWARD (10% of stake as LOTT) ===
         # 50 ALGO stake / 10_000_000 = 5 LOTT (0-decimal token)
@@ -772,8 +764,8 @@ def spin_reveal():
         ),
 
         # === CALCULATE NET STAKE ===
-        # Platform fee (5%) already paid in spin_commit. Net = 95% of original.
-        net_stake.store((spin_stake * Int(9500)) / Int(10000)),
+        # No stake fee — 100% of the stake feeds the pot.
+        net_stake.store(spin_stake),
 
         # === CALCULATE PAYOUT & NEW POT ===
         # Initialize jackpot-specific scratch vars (must be stored before any load)
@@ -798,7 +790,7 @@ def spin_reveal():
                 payout_amount.store((current_pot * PAYOUT_BLUE_BPS) / Int(10000)),
                 new_pot.store(current_pot - payout_amount.load() + net_stake.load()),
             ]),
-            # GOLD (JACKPOT): 65% winner, 20% rollover, 10% LOTT, 5% platform
+            # GOLD (JACKPOT): 45% winner, 45% rollover, 5% LOTT, 5% platform
             Seq([
                 payout_amount.store((current_pot * PAYOUT_GOLD_WINNER_BPS) / Int(10000)),
                 lott_holder_amount.store((current_pot * PAYOUT_GOLD_LOTT_BPS) / Int(10000)),
@@ -832,7 +824,7 @@ def spin_reveal():
         # Jackpot-specific payments: LOTT holders + platform
         If(winning_color.load() == COLOR_GOLD,
             Seq([
-                # 10% to LOTT holders
+                # 5% to LOTT holders
                 InnerTxnBuilder.Begin(),
                 InnerTxnBuilder.SetFields({
                     TxnField.type_enum: TxnType.Payment,
@@ -842,7 +834,7 @@ def spin_reveal():
                 }),
                 InnerTxnBuilder.Submit(),
 
-                # 5% additional platform fee on jackpot
+                # 5% platform/engineering fee — charged ONLY on a jackpot
                 InnerTxnBuilder.Begin(),
                 InnerTxnBuilder.SetFields({
                     TxnField.type_enum: TxnType.Payment,
@@ -900,8 +892,8 @@ def expire_spin():
     """
     Clean up a stuck spin. Callable by anyone after timeout.
 
-    Forfeits net_stake (95%) to the pot — the stake is NOT refunded.
-    The 5% platform fee was already paid in spin_commit.
+    Forfeits the full stake to the pot — the stake is NOT refunded.
+    (There is no platform fee on the stake.)
 
     Forfeiting (rather than refunding) closes the abort-on-loss exploit:
     if a player could observe the VRF beacon for their commit round and
@@ -930,8 +922,8 @@ def expire_spin():
         # Verify it has expired
         Assert(Global.round() > spin_round + expire_limit),
 
-        # Compute forfeit amount (95% of stake; platform fee was already taken at commit)
-        net_stake.store((spin_stake * Int(9500)) / Int(10000)),
+        # Forfeit the full stake (no platform fee is taken on the stake)
+        net_stake.store(spin_stake),
 
         # Forfeit the stake to the pot (closes abort-on-loss exploit)
         App.globalPut(KEY_POT, App.globalGet(KEY_POT) + net_stake.load()),

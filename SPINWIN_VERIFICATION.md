@@ -40,11 +40,12 @@ If both match, the spin is **provably fair**.
 
 ### Verifying the colour (`--tier`)
 
-The reveal log records the tier as `0` (the contract clears the per-spin tier global before it
-emits the log), so to also re-derive the **colour** from the chain, pass the tier explicitly:
+The reveal log records the **tier**, so the tool re-derives the **colour** automatically from the
+chain — no extra input needed. (Some early spins predate the tier being logged and read `0`; for
+those, pass the tier explicitly:)
 
 ```bash
-python3 verify_spin.py <reveal_tx_id> --tier 1     # 1, 2 or 3
+python3 verify_spin.py <reveal_tx_id> --tier 1     # 1, 2 or 3 — only needed for legacy spins
 ```
 
 The **segment** check is the fairness-critical step and never needs the tier — the colour is just
@@ -57,10 +58,12 @@ a deterministic label on top of the segment.
 | ⚫ Black | none — your stake grows the pot |
 | 🟢 Green | 10% |
 | 🔵 Blue | 18% |
-| 🟡 Gold (JACKPOT) | 50% |
+| 🟡 Gold (JACKPOT) | 45% |
 
-A **gold** jackpot is split **50% to the winner / 45% rolled into the next pot / 5% to LOTT
-holders**. Higher tiers stake more (3% / 6% / 12% of the pot) and have more winning segments.
+A **gold** jackpot is split **45% to the winner / 45% rolled into the next pot / 5% to LOTT
+holders / 5% to the platform**. There is **no fee on your stake** — 100% of every stake feeds the
+pot, and the platform's 5% is charged only when a jackpot is won. Higher tiers stake more
+(3% / 6% / 12% of the pot) and have more winning segments.
 
 ## Example output
 
@@ -81,7 +84,7 @@ holders**. Higher tiers stake more (3% / 6% / 12% of the pot) and have more winn
    Tier 1 segments: gold=1, blue=1, green=1 (rest of 38 are black)
    colour for segment 0 = gold
    Colour check:  ✅ MATCH (recomputed gold vs on-chain gold)
-   Payout rate:   gold = 50% of pot
+   Payout rate:   gold = 45% of pot
 
 ✅ ✅ ✅  SPIN IS FAIR AND VALID  ✅ ✅ ✅
 ```
